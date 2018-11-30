@@ -6,17 +6,16 @@
 class MotionDetector
 {
 public:
-    explicit MotionDetector(std::string fileName, int threshold = 8, bool showWindows = false);
-    void run(int prerecord);
+    explicit MotionDetector(std::string inputFile, int threshold = 8, bool showAll = false);
+    void run(int prerecord, std::string outputDir="../output/"); // NOTE: outputDir with '/' at the end
     ~MotionDetector();
 
 private:
-    void initRecorder(cv::VideoWriter& videoWriter, std::string fileName) const;
     void processImage(const cv::Mat& frame);
     bool somethingHasMoved() const;
 
     int threshold_;
-    bool show_; // Either or not show 2 windows
+    bool showAll_; // Either or not show 2 windows and logs in the console
     cv::VideoCapture capture_;
     cv::Size frameSize_;
     int pixels_; // Number of pixels in a frame

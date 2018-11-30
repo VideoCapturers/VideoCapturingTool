@@ -8,10 +8,10 @@
 #include <iostream>
 #include <ctime>
 
-MotionDetector::MotionDetector(std::string fileName, int threshold, bool showWindows)
-    : threshold_(threshold), show_(showWindows)
+MotionDetector::MotionDetector(std::string inputFile, int threshold, bool showAll)
+    : threshold_(threshold), showAll_(showAll)
 {
-    capture_ = cv::VideoCapture(fileName);
+    capture_ = cv::VideoCapture(inputFile);
 
     if (!capture_.isOpened())
     {
@@ -27,11 +27,11 @@ MotionDetector::MotionDetector(std::string fileName, int threshold, bool showWin
     frameSize_ = frame.size();
     pixels_ = frameSize_.width * frameSize_.height;
     grayFrame1_ = cv::Mat(frameSize_, CV_8U); // Gray frame at t - 1
-    cv::cvtColor(frame, grayFrame1_, cv::COLOR_RGB2GRAY);
+    cv::cvtColor(frame, grayFrame1_, cv::COLOR_RGB2GRAY); // Convert grayFrame1_ from one color space to another
     grayFrame2_ = cv::Mat(frameSize_, CV_8U); // Gray frame at t
     result_ = cv::Mat(frameSize_, CV_8U); // Will hold the thresholded result
 
-    if (show_)
+    if (showAll_)
     {
         cv::namedWindow("Video");
         cv::namedWindow("Result");
@@ -39,14 +39,14 @@ MotionDetector::MotionDetector(std::string fileName, int threshold, bool showWin
     }
 }
 
-void MotionDetector::run(int prerecord)
+void MotionDetector::run(int prerecord, std::string outputDir)
 {
     bool isRecording = false;
     std::list<cv::Mat> cachedFrames; // Frames of prerecord / postrecord
     time_t currentTime = 0;
-    time_t afterPostrecord = 0;
+    time_t afterMoving = 0; // Time elapsed after last moving
     time_t startedTime = time(nullptr);
-    time_t afterPrerecord = startedTime + prerecord;
+    time_t timeWithPrerecord = startedTime + prerecord;
     cv::VideoWriter videoWriter;
 
     while (true)
@@ -59,12 +59,12 @@ void MotionDetector::run(int prerecord)
         processImage(currentFrame);
         currentTime = startedTime + static_cast<int>(capture_.get(cv::CAP_PROP_POS_MSEC) / 1000);
         std::string text(ctime(&currentTime));
-        text.pop_back();
+        text.pop_back(); // Remove '\n' for correct information display
         cv::putText(currentFrame, text, cv::Point(25, 30), cv::FONT_HERSHEY_SIMPLEX, 1, 
                     cv::Scalar(0, 255, 0)); // Green text (colors are BGR)
         cachedFrames.push_back(currentFrame);
 
-        if (currentTime > afterPrerecord)
+        if (currentTime > timeWithPrerecord)
             cachedFrames.pop_front();
 
         if (!isRecording)
@@ -72,8 +72,16 @@ void MotionDetector::run(int prerecord)
             if (somethingHasMoved())
             {
                 isRecording = true;
-                std::cout << text << ": start recording\n";
-                initRecorder(videoWriter, text);
+
+                if (showAll_)
+                    std::cout << text << ": start recording" << std::endl;
+
+                std::replace(text.begin(), text.end(), ':', '-'); // File name correction
+                videoWriter = cv::VideoWriter(outputDir + text + ".avi",
+                                              static_cast<int>(capture_.get(cv::CAP_PROP_FOURCC)),
+                                              static_cast<int>(capture_.get(cv::CAP_PROP_FPS)),
+                                              frameSize_);
+
                 for (const auto& frame : cachedFrames)
                     videoWriter.write(frame);
             }
@@ -83,19 +91,21 @@ void MotionDetector::run(int prerecord)
             videoWriter.write(currentFrame);
 
             if (somethingHasMoved())
-                afterPostrecord = 0;
-            else if (!afterPostrecord)
-                afterPostrecord = currentTime + prerecord;
-            else if (currentTime > afterPostrecord)
+                afterMoving = 0;
+            else if (!afterMoving)
+                afterMoving = currentTime + prerecord;
+            else if (currentTime > afterMoving)
             {
                 isRecording = false;
                 videoWriter.release();
-                std::cout << text << ": stop recording\n";
-                afterPostrecord = 0;
+                afterMoving = 0;
+
+                if (showAll_)
+                    std::cout << text << ": stop recording" << std::endl;
             }
         }
 
-        if (show_)
+        if (showAll_)
         {
             cv::imshow("Video", currentFrame);
             cv::imshow("Result", result_);
@@ -116,16 +126,6 @@ MotionDetector::~MotionDetector()
     capture_.release();
 }
 
-void MotionDetector::initRecorder(cv::VideoWriter& videoWriter, std::string fileName) const
-{
-    std::replace(fileName.begin(), fileName.end(), ':', '-'); // File name correction
-
-    videoWriter = cv::VideoWriter("../output/" + fileName + ".avi",
-                                  static_cast<int>(capture_.get(cv::CAP_PROP_FOURCC)), 
-                                  static_cast<int>(capture_.get(cv::CAP_PROP_FPS)), 
-                                  frameSize_);
-}
-
 void MotionDetector::processImage(const cv::Mat& frame)
 {
     cv::cvtColor(frame, grayFrame2_, cv::COLOR_RGB2GRAY);
@@ -134,11 +134,11 @@ void MotionDetector::processImage(const cv::Mat& frame)
     // Remove the noise and do the threshold
     cv::blur(result_, result_, cv::Size(5, 5));
     cv::morphologyEx(result_, result_, cv::MORPH_OPEN,
-                     cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2 * 5 + 1, 2 * 5 + 1),
-                     cv::Point(5, 5)));
+                     cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2 * 5 + 1, 2 * 5 + 1), // 2 * morphSize + 1
+                     cv::Point(5, 5))); // morphSize = 5
     cv::morphologyEx(result_, result_, cv::MORPH_CLOSE,
-                     cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2 * 0 + 1, 2 * 0 + 1),
-                     cv::Point(0, 0)));
+                     cv::getStructuringElement(cv::MORPH_RECT, cv::Size(2 * 0 + 1, 2 * 0 + 1), // 2 * morphSize + 1
+                     cv::Point(0, 0))); // morphSize = 0
     cv::threshold(result_, result_, 10, 255, cv::THRESH_BINARY_INV);
 
     grayFrame2_.copyTo(grayFrame1_);
