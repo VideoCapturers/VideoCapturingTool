@@ -11,7 +11,7 @@
 MotionDetector::MotionDetector(std::string inputFile, int threshold, bool showAll)
     : threshold_(threshold), showAll_(showAll)
 {
-    capture_ = cv::VideoCapture(inputFile);
+    capture_ = cv::VideoCapture(0);
 
     if (!capture_.isOpened())
     {
@@ -22,7 +22,10 @@ MotionDetector::MotionDetector(std::string inputFile, int threshold, bool showAl
     cv::Mat frame;
 
     if (!capture_.read(frame))
+    {
+        std::cout << "Can't read video capture.\n";
         return;
+    }
 
     frameSize_ = frame.size();
     pixels_ = frameSize_.width * frameSize_.height;
@@ -72,10 +75,7 @@ void MotionDetector::run(int prerecord, std::string outputDir)
             if (somethingHasMoved())
             {
                 isRecording = true;
-
-                if (showAll_)
-                    std::cout << text << ": start recording" << std::endl;
-
+                std::cout << text << ": moving detected" << std::endl;
                 std::replace(text.begin(), text.end(), ':', '-'); // File name correction
                 videoWriter = cv::VideoWriter(outputDir + text + ".avi",
                                               static_cast<int>(capture_.get(cv::CAP_PROP_FOURCC)),
@@ -99,9 +99,7 @@ void MotionDetector::run(int prerecord, std::string outputDir)
                 isRecording = false;
                 videoWriter.release();
                 afterMoving = 0;
-
-                if (showAll_)
-                    std::cout << text << ": stop recording" << std::endl;
+                std::cout << text << ": stop recording" << std::endl;
             }
         }
 
