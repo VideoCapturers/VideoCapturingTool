@@ -8,8 +8,8 @@
 #include <iostream>
 #include <ctime>
 
-MotionDetector::MotionDetector(std::string inputFile, int threshold, bool showAll)
-    : threshold_(threshold), showAll_(showAll)
+MotionDetector::MotionDetector(int threshold, bool showWindows)
+    : threshold_(threshold), showWindows_(showWindows)
 {
     capture_ = cv::VideoCapture(0);
 
@@ -23,7 +23,7 @@ MotionDetector::MotionDetector(std::string inputFile, int threshold, bool showAl
 
     if (!capture_.read(frame))
     {
-        std::cout << "Can't read video capture.\n";
+        std::cout << "Can't read the video.\n";
         return;
     }
 
@@ -34,7 +34,7 @@ MotionDetector::MotionDetector(std::string inputFile, int threshold, bool showAl
     grayFrame2_ = cv::Mat(frameSize_, CV_8U); // Gray frame at t
     result_ = cv::Mat(frameSize_, CV_8U); // Will hold the thresholded result
 
-    if (showAll_)
+    if (showWindows_)
     {
         cv::namedWindow("Video");
         cv::namedWindow("Result");
@@ -55,12 +55,14 @@ void MotionDetector::run(int prerecord, std::string outputDir)
     while (true)
     {
         cv::Mat currentFrame;
+        int64 start = cv::getTickCount();
 
         if (!capture_.read(currentFrame))
             return;
 
         processImage(currentFrame);
-        currentTime = startedTime + static_cast<int>(capture_.get(cv::CAP_PROP_POS_MSEC) / 1000);
+        //currentTime = startedTime + static_cast<int>(capture_.get(cv::CAP_PROP_POS_MSEC) / 1000);
+        currentTime = time(nullptr);
         std::string text(ctime(&currentTime));
         text.pop_back(); // Remove '\n' for correct information display
         cv::putText(currentFrame, text, cv::Point(25, 30), cv::FONT_HERSHEY_SIMPLEX, 1, 
@@ -75,11 +77,11 @@ void MotionDetector::run(int prerecord, std::string outputDir)
             if (somethingHasMoved())
             {
                 isRecording = true;
-                std::cout << text << ": moving detected" << std::endl;
+                std::cout << text << " : moving detected" << std::endl;
                 std::replace(text.begin(), text.end(), ':', '-'); // File name correction
                 videoWriter = cv::VideoWriter(outputDir + text + ".avi",
                                               static_cast<int>(capture_.get(cv::CAP_PROP_FOURCC)),
-                                              static_cast<int>(capture_.get(cv::CAP_PROP_FPS)),
+                                              static_cast<int>(capture_.get(cv::CAP_PROP_FPS) / 2),
                                               frameSize_);
 
                 for (const auto& frame : cachedFrames)
@@ -103,7 +105,7 @@ void MotionDetector::run(int prerecord, std::string outputDir)
             }
         }
 
-        if (showAll_)
+        if (showWindows_)
         {
             cv::imshow("Video", currentFrame);
             cv::imshow("Result", result_);
@@ -116,6 +118,8 @@ void MotionDetector::run(int prerecord, std::string outputDir)
 
             break;
         }
+        
+        std::cout << "FPS : " << cv::getTickFrequency() / (cv::getTickCount() - start) << std::endl;
     }
 }
 
