@@ -55,7 +55,6 @@ void MotionDetector::run(int prerecord, std::string outputDir)
     while (true)
     {
         cv::Mat currentFrame;
-        int64 start = cv::getTickCount();
 
         if (!capture_.read(currentFrame))
             return;
@@ -118,8 +117,6 @@ void MotionDetector::run(int prerecord, std::string outputDir)
 
             break;
         }
-        
-        std::cout << "FPS : " << cv::getTickFrequency() / (cv::getTickCount() - start) << std::endl;
     }
 }
 
